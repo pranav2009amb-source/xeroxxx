@@ -1,0 +1,359 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Poopathi Xerox - Online Print Order</title>
+
+<!-- PDF page counting library -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+
+<style>
+* { box-sizing: border-box; }
+
+body {
+    margin: 0;
+    font-family: Arial, sans-serif;
+    background: #f1f5f9;
+    color: #1e293b;
+}
+
+header {
+    background: #123c69;
+    color: white;
+    padding: 25px 15px;
+    text-align: center;
+}
+
+header h1 { margin: 0 0 8px; }
+header p { margin: 5px; }
+
+.container {
+    max-width: 560px;
+    margin: 25px auto;
+    padding: 24px;
+    background: white;
+    border-radius: 14px;
+    box-shadow: 0 5px 20px #0001;
+}
+
+label {
+    display: block;
+    font-weight: bold;
+    margin: 15px 0 7px;
+}
+
+input, select {
+    width: 100%;
+    padding: 12px;
+    border: 1px solid #cbd5e1;
+    border-radius: 7px;
+    font-size: 16px;
+}
+
+button {
+    width: 100%;
+    padding: 14px;
+    margin-top: 20px;
+    border: none;
+    border-radius: 8px;
+    background: #128c7e;
+    color: white;
+    font-size: 17px;
+    font-weight: bold;
+    cursor: pointer;
+}
+
+button:disabled {
+    opacity: 0.6;
+    cursor: wait;
+}
+
+.bill {
+    margin-top: 20px;
+    padding: 17px;
+    background: #eff6ff;
+    border-radius: 9px;
+    line-height: 1.8;
+}
+
+.total {
+    font-size: 23px;
+    font-weight: bold;
+    color: #123c69;
+}
+
+.note {
+    font-size: 13px;
+    color: #64748b;
+    line-height: 1.5;
+}
+
+#result {
+    display: none;
+    margin-top: 20px;
+    padding: 18px;
+    background: #ecfdf5;
+    border-radius: 10px;
+    overflow-wrap: anywhere;
+}
+
+.otp {
+    font-size: 30px;
+    font-weight: bold;
+    letter-spacing: 5px;
+    color: #047857;
+    text-align: center;
+    padding: 12px;
+}
+
+footer {
+    text-align: center;
+    padding: 20px;
+    color: #64748b;
+}
+</style>
+</head>
+
+<body>
+
+<header>
+    <h1>Poopathi Xerox</h1>
+    <p>Online Printing & Xerox Order</p>
+    <p>Order from home. Collect your printout at the shop.</p>
+</header>
+
+<div class="container">
+    <h2>Place Your Print Order</h2>
+
+    <form id="orderForm">
+        <label for="customer">Customer Name</label>
+        <input id="customer" type="text" required
+               placeholder="Enter your name">
+
+        <label for="mobile">Your Mobile Number</label>
+        <input id="mobile" type="tel" required
+               inputmode="numeric" pattern="[0-9]{10}"
+               placeholder="10-digit mobile number">
+
+        <label for="pdf">Upload Your PDF</label>
+        <input id="pdf" type="file"
+               accept=".pdf,application/pdf" required>
+
+        <p class="note">
+            PDF page counting requires an internet connection.
+            Your PDF is not automatically uploaded to the shop
+            by this demo.
+        </p>
+
+        <label for="copies">Number of Copies</label>
+        <input id="copies" type="number" min="1"
+               max="100" value="1" required>
+
+        <label for="printType">Printing Type</label>
+        <select id="printType">
+            <option value="1">Black & White - ₹2 per page</option>
+            <option value="5">Colour - ₹5 per page</option>
+        </select>
+
+        <label for="payment">Payment Mode</label>
+        <select id="payment" required>
+            <option value="Cash at Shop">Cash at Shop</option>
+            <option value="UPI at Shop">UPI at Shop</option>
+            <option value="Paid Online - Unverified">
+                Already Paid Online
+            </option>
+        </select>
+
+        <div class="bill">
+            <div>PDF pages: <strong id="pages">0</strong></div>
+            <div>Copies: <strong id="copyDisplay">1</strong></div>
+            <div>Price per page: ₹<strong id="rate">2</strong></div>
+            <div class="total">
+                Total Bill: ₹<span id="total">0</span>
+            </div>
+        </div>
+
+        <button id="orderButton" type="submit">
+            Place Order on WhatsApp
+        </button>
+    </form>
+
+    <div id="result">
+        <h3>Order Details</h3>
+        <p>Your order OTP is:</p>
+        <div class="otp" id="otpDisplay"></div>
+        <p>
+            Keep this OTP and provide it at the shop when
+            collecting your printout.
+        </p>
+        <p><strong>Order ID:</strong> <span id="orderId"></span></p>
+        <p id="orderStatus"></p>
+    </div>
+</div>
+
+<footer>
+    Poopathi Xerox | Thank you for your order!
+</footer>
+
+<script>
+const SHOP_NUMBER = "917708851581";
+const PRICE_BW = 2;
+const PRICE_COLOUR = 5;
+
+let pageCount = 0;
+let selectedFile = null;
+
+pdfjsLib.GlobalWorkerOptions.workerSrc =
+"https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
+
+const pdfInput = document.getElementById("pdf");
+const copiesInput = document.getElementById("copies");
+const printType = document.getElementById("printType");
+
+function calculateBill() {
+    const copies = Number(copiesInput.value) || 0;
+    const rate = Number(printType.value);
+
+    document.getElementById("pages").textContent = pageCount;
+    document.getElementById("copyDisplay").textContent = copies;
+    document.getElementById("rate").textContent = rate;
+
+    document.getElementById("total").textContent =
+        (pageCount * copies * rate).toFixed(2);
+}
+
+copiesInput.addEventListener("input", calculateBill);
+printType.addEventListener("change", calculateBill);
+
+pdfInput.addEventListener("change", async function () {
+    selectedFile = this.files[0];
+    pageCount = 0;
+    calculateBill();
+
+    if (!selectedFile) return;
+
+    if (selectedFile.type !== "application/pdf" &&
+        !selectedFile.name.toLowerCase().endsWith(".pdf")) {
+        alert("Please select a PDF file.");
+        this.value = "";
+        selectedFile = null;
+        return;
+    }
+
+    const button = document.getElementById("orderButton");
+    button.disabled = true;
+    button.textContent = "Counting PDF pages...";
+
+    try {
+        const data = await selectedFile.arrayBuffer();
+        const pdf = await pdfjsLib.getDocument({
+            data: new Uint8Array(data)
+        }).promise;
+
+        pageCount = pdf.numPages;
+        calculateBill();
+    } catch (error) {
+        alert("Could not read this PDF. Please select a valid PDF.");
+        this.value = "";
+        selectedFile = null;
+        pageCount = 0;
+        calculateBill();
+    } finally {
+        button.disabled = false;
+        button.textContent = "Place Order on WhatsApp";
+    }
+});
+
+document.getElementById("orderForm").addEventListener(
+"submit", function (event) {
+    event.preventDefault();
+
+    const customer = document.getElementById("customer").value.trim();
+    const mobile = document.getElementById("mobile").value.trim();
+    const copies = Number(copiesInput.value);
+    const rate = Number(printType.value);
+    const payment = document.getElementById("payment").value;
+    const total = pageCount * copies * rate;
+    const button = document.getElementById("orderButton");
+
+    if (!selectedFile || pageCount < 1) {
+        alert("Please upload a valid PDF first.");
+        return;
+    }
+
+    if (!/^[0-9]{10}$/.test(mobile)) {
+        alert("Enter a valid 10-digit mobile number.");
+        return;
+    }
+
+    if (!Number.isInteger(copies) || copies < 1 || copies > 100) {
+        alert("Copies must be between 1 and 100.");
+        return;
+    }
+
+    if (total <= 0) {
+        alert("Please check your order details.");
+        return;
+    }
+
+    // Demo OTP: generated in the browser, not securely verified.
+    const otp = String(
+        Math.floor(100000 + Math.random() * 900000)
+    );
+
+    const orderId = "PX" + Date.now().toString().slice(-8);
+
+    document.getElementById("otpDisplay").textContent = otp;
+    document.getElementById("orderId").textContent = orderId;
+    document.getElementById("orderStatus").textContent =
+        "Order message prepared. Complete sending it in WhatsApp.";
+
+    document.getElementById("result").style.display = "block";
+
+    const message =
+`NEW POOPATHI XEROX ORDER
+-------------------------
+Order ID: ${orderId}
+Customer: ${customer}
+Customer Mobile: ${mobile}
+PDF File: ${selectedFile.name}
+PDF Pages: ${pageCount}
+Copies: ${copies}
+Printing: ${rate === PRICE_BW ? "Black & White" : "Colour"}
+Payment Mode: ${payment}
+Total Bill: Rs. ${total.toFixed(2)}
+ORDER OTP: ${otp}
+-------------------------
+IMPORTANT:
+Payment is not verified by this website.
+Confirm payment before printing.
+Ask the customer to provide the matching OTP.
+The PDF file must be received separately.
+`;
+
+    const whatsappURL =
+        "https://wa.me/" + SHOP_NUMBER +
+        "?text=" + encodeURIComponent(message);
+
+    // Open WhatsApp; the user must press Send.
+    const whatsappWindow = window.open(whatsappURL, "_blank");
+
+    if (!whatsappWindow) {
+        document.getElementById("orderStatus").textContent =
+            "WhatsApp popup blocked. Use the link below to send your order.";
+        const link = document.createElement("a");
+        link.href = whatsappURL;
+        link.target = "_blank";
+        link.rel = "noopener";
+        link.textContent = "Open WhatsApp order message";
+        link.style.display = "block";
+        link.style.marginTop = "12px";
+        document.getElementById("result").appendChild(link);
+    }
+});
+</script>
+
+</body>
+</html>
